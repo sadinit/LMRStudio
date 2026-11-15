@@ -1,0 +1,6 @@
+{
+  "name": "VetrinaKit",
+  "description": "Studio per creare e pubblicare vetrine prodotti su GitHub con prezzi a scaglioni per quantità, assistente creativo per impaginazione e blocco definitivo del layout.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
