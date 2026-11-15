@@ -19,5 +19,23 @@
   <body class="bg-[#F8F7F4] text-[#18181B] antialiased selection:bg-[#18181B] selection:text-[#F8F7F4]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', function () {
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && !root.hasChildNodes()) {
+            root.innerHTML =
+              '<div style="max-width:680px;margin:48px auto;padding:28px;background:#fff;border:1px solid #e4e4e7;border-radius:8px;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#18181b;">' +
+              '<h1 style="margin:0 0 12px;font-size:20px;">VetrinaKit richiede la compilazione per GitHub Pages</h1>' +
+              '<p style="margin:0 0 14px;color:#52525b;font-size:14px;">Stai aprendo il file <code>index.html</code> sorgente senza compilazione Vite (<code>src/main.tsx</code> non viene eseguito direttamente dai browser statici).</p>' +
+              '<ol style="margin:0;padding-left:20px;font-size:14px;color:#27272a;">' +
+              '<li style="margin-bottom:8px;"><strong>Consigliato (automatico):</strong> su GitHub vai in <strong>Settings → Pages → Source</strong> e seleziona <strong>GitHub Actions</strong>. Il workflow incluso compilerà automaticamente l’app.</li>' +
+              '<li><strong>Oppure manuale:</strong> esegui <code>npm install &amp;&amp; npm run build</code> e carica su GitHub Pages il contenuto della cartella <code>dist/</code> (oppure usa <em>Scarica index.html</em> dentro VetrinaKit).</li>' +
+              '</ol>' +
+              '</div>';
+          }
+        }, 1400);
+      });
+    </script>
   </body>
 </html>
