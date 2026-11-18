@@ -80,10 +80,10 @@ export default function App() {
   }, [githubConfig]);
 
   const navItems: Array<{ id: WorkspaceTab; label: string }> = [
-    { id: 'preview', label: 'Vetrina Live' },
-    { id: 'products', label: 'Prodotti & Prezzi' },
-    { id: 'layout', label: 'Studio Layout' },
-    { id: 'github', label: 'GitHub & Esporta' },
+    { id: 'preview', label: 'Anteprima' },
+    { id: 'products', label: 'Prodotti' },
+    { id: 'layout', label: 'Layout & Testi' },
+    { id: 'github', label: 'GitHub' },
   ];
 
   return (
@@ -139,6 +139,11 @@ export default function App() {
           <ShowcasePreview
             doc={doc}
             onGoToLayout={() => setActiveTab('layout')}
+            onEditBrand={() => setActiveTab('layout')}
+            onAddProduct={() => {
+              setSelectedProductId(null);
+              setActiveTab('products');
+            }}
             onEditProduct={(productId) => {
               setSelectedProductId(productId);
               setActiveTab('products');

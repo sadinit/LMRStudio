@@ -651,12 +651,50 @@ export const LayoutStudio: React.FC<LayoutStudioProps> = ({
 
           <div className="md:col-span-6">
             <label className="mb-1 block text-xs font-medium text-zinc-700">
+              Titolo Sezione Forniture / Condizioni
+            </label>
+            <input
+              type="text"
+              value={brand.craftNoteTitle}
+              onChange={(e) => onChangeBrand({ ...brand, craftNoteTitle: e.target.value })}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="md:col-span-12">
+            <label className="mb-1 block text-xs font-medium text-zinc-700">
               Nota Condizioni / Forniture
             </label>
             <textarea
               rows={2}
               value={brand.craftNoteBody}
               onChange={(e) => onChangeBrand({ ...brand, craftNoteBody: e.target.value })}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="md:col-span-4">
+            <label className="mb-1 block text-xs font-medium text-zinc-700">
+              Numero Telefono / WhatsApp
+            </label>
+            <input
+              type="text"
+              value={brand.whatsappNumber}
+              onChange={(e) => onChangeBrand({ ...brand, whatsappNumber: e.target.value })}
+              placeholder="Es. +39 333 123 4567"
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="md:col-span-8">
+            <label className="mb-1 block text-xs font-medium text-zinc-700">
+              Firma Azienda in Basso (Footer)
+            </label>
+            <input
+              type="text"
+              value={brand.footerNote}
+              onChange={(e) => onChangeBrand({ ...brand, footerNote: e.target.value })}
+              placeholder="Es. Nome Azienda S.r.l. — P.IVA 01234567890"
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
             />
           </div>

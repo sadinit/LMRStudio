@@ -59,6 +59,12 @@ export const GitHubPublisher: React.FC<GitHubPublisherProps> = ({
         owner: parsed.owner,
         repo: parsed.repo,
       });
+    } else if (!value.trim()) {
+      onChangeGitHubConfig({
+        ...githubConfig,
+        owner: '',
+        repo: '',
+      });
     }
   };
 
@@ -67,12 +73,20 @@ export const GitHubPublisher: React.FC<GitHubPublisherProps> = ({
     setStatusMessage(null);
     try {
       const res = await testGitHubConnection(githubConfig);
-      if (!githubConfig.branch && res.defaultBranch) {
-        onChangeGitHubConfig({ ...githubConfig, branch: res.defaultBranch });
+      const currentBranchValid =
+        res.branches.length === 0 || res.branches.includes(githubConfig.branch);
+      const nextBranch = currentBranchValid ? githubConfig.branch : res.defaultBranch;
+
+      if (nextBranch !== githubConfig.branch) {
+        onChangeGitHubConfig({ ...githubConfig, branch: nextBranch });
       }
+
       setStatusMessage({
         type: 'success',
-        text: `Connessione riuscita a ${githubConfig.owner}/${githubConfig.repo} (branch predefinito: ${res.defaultBranch}).`,
+        text:
+          res.branches.length === 0
+            ? `Connessione riuscita a ${githubConfig.owner}/${githubConfig.repo} (repository vuota: verrà inizializzata al primo invio su "${nextBranch}").`
+            : `Connessione riuscita a ${githubConfig.owner}/${githubConfig.repo} (branch attivo: ${nextBranch}).`,
         pagesUrl: res.pagesUrl,
       });
     } catch (err) {
@@ -116,9 +130,17 @@ export const GitHubPublisher: React.FC<GitHubPublisherProps> = ({
         lastCommitSha: res.commitSha,
       });
       setCommitMessage('');
+
+      const pagesHint =
+        res.pagesStatus === 'enabled-now'
+          ? ' GitHub Pages è stato attivato automaticamente: la pagina sarà visibile tra ~30-60 secondi.'
+          : res.pagesStatus === 'needs-manual-enable'
+            ? ` Per evitare il 404 sul link pubblico, attiva una sola volta Settings → Pages → Deploy from a branch (${githubConfig.branch || 'main'} / root) su questa repository.`
+            : ' GitHub Pages si aggiornerà entro ~30-60 secondi.';
+
       setStatusMessage({
         type: 'success',
-        text: `Commit pubblicato su ${githubConfig.owner}/${githubConfig.repo} (${res.commitSha.slice(0, 7)}).`,
+        text: `Commit pubblicato su ${githubConfig.owner}/${githubConfig.repo} (${res.commitSha.slice(0, 7)}).${pagesHint}`,
         commitUrl: res.commitUrl,
         pagesUrl: res.pagesUrl,
       });
@@ -275,9 +297,15 @@ export const GitHubPublisher: React.FC<GitHubPublisherProps> = ({
                 type="text"
                 value={repoInput}
                 onChange={(e) => handleRepoInputChange(e.target.value)}
-                placeholder="es. mario-rossi/vetrina-ceramiche"
+                placeholder="es. mario-rossi/vetrina-ceramiche oppure https://github.com/..."
                 className="w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm focus:border-zinc-900 focus:outline-none"
               />
+              {repoInput.trim() && !parseGitHubRepoString(repoInput) && (
+                <p className="mt-1 text-xs text-amber-700">
+                  Usa il formato <code className="font-mono">utente/nome-repo</code> o incolla l’URL
+                  della repository GitHub.
+                </p>
+              )}
             </div>
 
             <div>

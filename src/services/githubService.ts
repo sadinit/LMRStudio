@@ -21,11 +21,19 @@ function decodeBase64ToUtf8(base64: string): string {
 }
 
 export function parseGitHubRepoString(input: string): { owner: string; repo: string } | null {
-  const trimmed = input.trim().replace(/\.git$/, '');
+  const trimmed = input.trim().replace(/\.git$/i, '').replace(/\/+$/, '');
+  if (!trimmed) return null;
+
   const urlMatch = trimmed.match(/github\.com\/([^/]+)\/([^/]+)/i);
   if (urlMatch) {
     return { owner: urlMatch[1], repo: urlMatch[2] };
   }
+
+  const pagesMatch = trimmed.match(/^https?:\/\/([A-Za-z0-9-]+)\.github\.io\/([^/]+)/i);
+  if (pagesMatch) {
+    return { owner: pagesMatch[1], repo: pagesMatch[2] };
+  }
+
   const slashMatch = trimmed.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
   if (slashMatch) {
     return { owner: slashMatch[1], repo: slashMatch[2] };
@@ -44,15 +52,36 @@ function ghHeaders(token?: string): Record<string, string> {
   return headers;
 }
 
+function computeDefaultPagesUrl(owner: string, repo: string): string {
+  if (repo.toLowerCase() === `${owner.toLowerCase()}.github.io`) {
+    return `https://${owner}.github.io/`;
+  }
+  return `https://${owner}.github.io/${repo}/`;
+}
+
+function explainRepoAccessError(status: number, owner: string, repo: string): string {
+  if (status === 401) {
+    return 'Token GitHub non valido o scaduto (401). Genera un nuovo token.';
+  }
+  if (status === 403) {
+    return `Accesso negato su ${owner}/${repo} (403). Verifica i permessi del token (Contents: Read and write).`;
+  }
+  if (status === 404) {
+    return `Repository "${owner}/${repo}" non trovata o non autorizzata dal token (404). Se usi un Fine-Grained Token, aggiungi anche questa repository in "Repository access" con permesso Contents: Read and write.`;
+  }
+  return `Errore GitHub (${status}) su ${owner}/${repo}.`;
+}
+
 export async function testGitHubConnection(config: GitHubConfig): Promise<{
   ok: boolean;
   defaultBranch: string;
   privateRepo: boolean;
   pagesUrl: string;
+  branches: string[];
 }> {
   const { owner, repo, token } = config;
   if (!owner || !repo) {
-    throw new Error('Inserisci proprietario e nome della repository GitHub.');
+    throw new Error('Inserisci proprietario e nome della repository (es. utente/nome-repo).');
   }
 
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
@@ -60,26 +89,35 @@ export async function testGitHubConnection(config: GitHubConfig): Promise<{
   });
 
   if (!res.ok) {
-    if (res.status === 404) {
-      throw new Error('Repository non trovata o token privo di accesso.');
-    }
-    if (res.status === 401) {
-      throw new Error('Token GitHub non valido o scaduto.');
-    }
-    throw new Error(`Errore GitHub (${res.status}).`);
+    throw new Error(explainRepoAccessError(res.status, owner, repo));
   }
 
   const data = (await res.json()) as {
     default_branch: string;
     private: boolean;
-    has_pages?: boolean;
+    permissions?: { push?: boolean };
   };
+
+  if (token.trim() && data.permissions && data.permissions.push === false) {
+    throw new Error(
+      `Il token può solo leggere "${owner}/${repo}" ma non scrivere. Abilita Contents: Read and write.`
+    );
+  }
+
+  const branchesRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/branches?per_page=20`,
+    { headers: ghHeaders(token) }
+  );
+  const branches = branchesRes.ok
+    ? ((await branchesRes.json()) as Array<{ name: string }>).map((b) => b.name)
+    : [];
 
   return {
     ok: true,
     defaultBranch: data.default_branch || 'main',
     privateRepo: Boolean(data.private),
-    pagesUrl: `https://${owner}.github.io/${repo}/`,
+    pagesUrl: computeDefaultPagesUrl(owner, repo),
+    branches,
   };
 }
 
@@ -97,9 +135,11 @@ export async function loadCatalogFromGitHub(
 
   if (!res.ok) {
     if (res.status === 404) {
-      throw new Error(`File "${cleanPath}" non ancora presente sul branch "${branch}".`);
+      throw new Error(
+        `File "${cleanPath}" non trovato sul branch "${branch}" di ${owner}/${repo} (oppure token senza accesso a questa repository).`
+      );
     }
-    throw new Error(`Impossibile leggere "${cleanPath}" (${res.status}).`);
+    throw new Error(explainRepoAccessError(res.status, owner, repo));
   }
 
   const filePayload = (await res.json()) as { content: string; sha: string };
@@ -110,7 +150,6 @@ export async function loadCatalogFromGitHub(
     throw new Error('Il file JSON trovato non corrisponde allo schema VetrinaKit.');
   }
 
-  // Resolve relative ./images/... references to raw GitHub URLs for preview inside the studio
   const rawBase = `https://raw.githubusercontent.com/${owner}/${repo}/${branch || 'main'}/`;
   const resolveImage = (img: string) =>
     img && img.startsWith('./') ? `${rawBase}${img.slice(2)}` : img;
@@ -143,7 +182,6 @@ async function assetToBase64Image(
     return { base64: match[2], ext };
   }
 
-  // Local app starter images or same-origin bundled assets
   if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
@@ -162,24 +200,148 @@ async function assetToBase64Image(
   return null;
 }
 
+async function ensureBranchExistsOrBootstrap(
+  owner: string,
+  repo: string,
+  branch: string,
+  token: string,
+  initialPath: string,
+  initialBase64Content: string
+): Promise<{ headSha: string; effectiveBranch: string }> {
+  const refUrl = `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
+  const refRes = await fetch(refUrl, { headers: ghHeaders(token) });
+
+  if (refRes.ok) {
+    const refData = (await refRes.json()) as { object: { sha: string } };
+    return { headSha: refData.object.sha, effectiveBranch: branch };
+  }
+
+  // Inspect branches to distinguish an empty repository from a mismatched branch name
+  const branchesRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/branches?per_page=20`,
+    { headers: ghHeaders(token) }
+  );
+
+  if (!branchesRes.ok) {
+    throw new Error(explainRepoAccessError(branchesRes.status, owner, repo));
+  }
+
+  const branches = (await branchesRes.json()) as Array<{ name: string; commit: { sha: string } }>;
+
+  if (branches.length === 0) {
+    // Empty repository: bootstrap initial commit via Contents API
+    const putUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${initialPath}`;
+    const putRes = await fetch(putUrl, {
+      method: 'PUT',
+      headers: ghHeaders(token),
+      body: JSON.stringify({
+        message: 'Inizializza repository vetrina',
+        content: initialBase64Content,
+        branch,
+      }),
+    });
+
+    if (!putRes.ok) {
+      throw new Error(explainRepoAccessError(putRes.status, owner, repo));
+    }
+
+    const putData = (await putRes.json()) as { commit: { sha: string } };
+    return { headSha: putData.commit.sha, effectiveBranch: branch };
+  }
+
+  const available = branches.map((b) => b.name).join(', ');
+  throw new Error(
+    `Branch "${branch}" non trovato su ${owner}/${repo}. Branch disponibili: ${available}.`
+  );
+}
+
+async function ensureGitHubPagesEnabled(
+  owner: string,
+  repo: string,
+  branch: string,
+  token: string
+): Promise<{ pagesUrl: string; pagesStatus: 'active' | 'enabled-now' | 'needs-manual-enable' }> {
+  const fallbackUrl = computeDefaultPagesUrl(owner, repo);
+  const pagesEndpoint = `https://api.github.com/repos/${owner}/${repo}/pages`;
+
+  try {
+    const getRes = await fetch(pagesEndpoint, { headers: ghHeaders(token) });
+    if (getRes.ok) {
+      const data = (await getRes.json()) as { html_url?: string };
+      return {
+        pagesUrl: data.html_url || fallbackUrl,
+        pagesStatus: 'active',
+      };
+    }
+
+    if (getRes.status === 404) {
+      const postRes = await fetch(pagesEndpoint, {
+        method: 'POST',
+        headers: ghHeaders(token),
+        body: JSON.stringify({
+          source: {
+            branch,
+            path: '/',
+          },
+        }),
+      });
+
+      if (postRes.ok) {
+        const created = (await postRes.json()) as { html_url?: string };
+        return {
+          pagesUrl: created.html_url || fallbackUrl,
+          pagesStatus: 'enabled-now',
+        };
+      }
+    }
+  } catch {
+    // Ignore network/permission issues for optional Pages API check
+  }
+
+  return {
+    pagesUrl: fallbackUrl,
+    pagesStatus: 'needs-manual-enable',
+  };
+}
+
 export async function publishShowcaseToGitHub(
   config: GitHubConfig,
   doc: ShowcaseDocument,
   commitMessage?: string
-): Promise<{ commitSha: string; commitUrl: string; pagesUrl: string }> {
+): Promise<{
+  commitSha: string;
+  commitUrl: string;
+  pagesUrl: string;
+  pagesStatus: 'active' | 'enabled-now' | 'needs-manual-enable';
+}> {
   const { owner, repo, branch, htmlPath, dataPath, token } = config;
   if (!owner || !repo || !token.trim()) {
-    throw new Error('Inserisci repository e token GitHub con permessi di scrittura.');
+    throw new Error('Inserisci repository (utente/nome-repo) e token GitHub con permessi di scrittura.');
   }
 
   const cleanBranch = branch.trim() || 'main';
   const cleanHtmlPath = htmlPath.trim().replace(/^\/+/, '') || 'index.html';
   const cleanDataPath = dataPath.trim().replace(/^\/+/, '') || 'data/catalog.json';
 
+  // Verify repository existence and write permissions first
+  const repoCheckRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    headers: ghHeaders(token),
+  });
+  if (!repoCheckRes.ok) {
+    throw new Error(explainRepoAccessError(repoCheckRes.status, owner, repo));
+  }
+  const repoMeta = (await repoCheckRes.json()) as {
+    permissions?: { push?: boolean };
+  };
+  if (repoMeta.permissions && repoMeta.permissions.push === false) {
+    throw new Error(
+      `Il token ha solo accesso in lettura su "${owner}/${repo}". Serve il permesso Contents: Read and write.`
+    );
+  }
+
   // Convert local/uploaded images to clean repo paths under images/
   const imagePathMap: Record<string, string> = {};
   const imageFilesToUpload: Array<{ path: string; base64: string }> = [];
-
   const rawPrefix = `https://raw.githubusercontent.com/${owner}/${repo}/${cleanBranch}/`;
 
   const processUrl = async (url: string, targetBaseName: string) => {
@@ -222,25 +384,22 @@ export async function publishShowcaseToGitHub(
   const catalogJson = JSON.stringify(repoCatalogDoc, null, 2);
   const standaloneHtml = generateStandaloneHtml(repoCatalogDoc);
 
-  // Use Git Data API for one clean atomic commit
-  const refUrl = `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(cleanBranch)}`;
-  const refRes = await fetch(refUrl, { headers: ghHeaders(token) });
-
-  if (!refRes.ok) {
-    throw new Error(
-      `Branch "${cleanBranch}" non trovato (${refRes.status}). Verifica che il repository sia inizializzato.`
-    );
-  }
-
-  const refData = (await refRes.json()) as { object: { sha: string } };
-  const parentCommitSha = refData.object.sha;
+  // Ensure branch exists (and bootstrap empty repository automatically if needed)
+  const { headSha: parentCommitSha, effectiveBranch } = await ensureBranchExistsOrBootstrap(
+    owner,
+    repo,
+    cleanBranch,
+    token,
+    cleanDataPath,
+    encodeUtf8ToBase64(catalogJson)
+  );
 
   const commitRes = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/git/commits/${parentCommitSha}`,
     { headers: ghHeaders(token) }
   );
   if (!commitRes.ok) {
-    throw new Error('Impossibile leggere il commit corrente del branch.');
+    throw new Error(explainRepoAccessError(commitRes.status, owner, repo));
   }
   const commitData = (await commitRes.json()) as { tree: { sha: string } };
   const baseTreeSha = commitData.tree.sha;
@@ -252,7 +411,12 @@ export async function publishShowcaseToGitHub(
       body: JSON.stringify({ content: base64Content, encoding: 'base64' }),
     });
     if (!blobRes.ok) {
-      throw new Error(`Errore creazione blob su GitHub (${blobRes.status}).`);
+      if (blobRes.status === 404 || blobRes.status === 403) {
+        throw new Error(
+          `Permessi insufficienti sul token per scrivere su "${owner}/${repo}" (${blobRes.status}). Assicurati che il token abbia Contents: Read and write su questa repository.`
+        );
+      }
+      throw new Error(`Errore creazione file su GitHub (${blobRes.status}).`);
     }
     const blobData = (await blobRes.json()) as { sha: string };
     return blobData.sha;
@@ -318,20 +482,24 @@ export async function publishShowcaseToGitHub(
   if (!newCommitRes.ok) {
     throw new Error(`Errore creazione commit GitHub (${newCommitRes.status}).`);
   }
-  const newCommit = (await newCommitRes.json()) as { sha: string; html_url?: string };
+  const newCommit = (await newCommitRes.json()) as { sha: string };
 
+  const refUrl = `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(effectiveBranch)}`;
   const patchRefRes = await fetch(refUrl, {
     method: 'PATCH',
     headers: ghHeaders(token),
     body: JSON.stringify({ sha: newCommit.sha, force: false }),
   });
   if (!patchRefRes.ok) {
-    throw new Error(`Errore aggiornamento branch "${cleanBranch}" (${patchRefRes.status}).`);
+    throw new Error(`Errore aggiornamento branch "${effectiveBranch}" (${patchRefRes.status}).`);
   }
+
+  const pagesInfo = await ensureGitHubPagesEnabled(owner, repo, effectiveBranch, token);
 
   return {
     commitSha: newCommit.sha,
     commitUrl: `https://github.com/${owner}/${repo}/commit/${newCommit.sha}`,
-    pagesUrl: `https://${owner}.github.io/${repo}/`,
+    pagesUrl: pagesInfo.pagesUrl,
+    pagesStatus: pagesInfo.pagesStatus,
   };
 }

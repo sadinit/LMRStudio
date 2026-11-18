@@ -28,6 +28,8 @@ import {
 interface ShowcasePreviewProps {
   doc: ShowcaseDocument;
   onGoToLayout?: () => void;
+  onEditBrand?: () => void;
+  onAddProduct?: () => void;
   onEditProduct?: (productId: string) => void;
 }
 
@@ -74,6 +76,8 @@ function ResilientImage({
 export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
   doc,
   onGoToLayout,
+  onEditBrand,
+  onAddProduct,
   onEditProduct,
 }) => {
   const preset = THEME_PRESETS[doc.layout.presetId];
@@ -173,7 +177,7 @@ export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
     <div className="space-y-4">
       {/* Studio Preview Control Strip */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           {doc.layout.isLocked ? (
             <span className="inline-flex items-center gap-1.5 font-medium text-emerald-800">
               <Lock className="h-4 w-4" />
@@ -196,7 +200,7 @@ export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-md border border-zinc-200 bg-zinc-50 p-0.5">
             <button
               type="button"
@@ -239,13 +243,24 @@ export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
             </button>
           </div>
 
+          {onAddProduct && (
+            <button
+              type="button"
+              onClick={onAddProduct}
+              className="inline-flex items-center gap-1 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-zinc-800 whitespace-nowrap"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Nuovo Prodotto
+            </button>
+          )}
+
           {onGoToLayout && (
             <button
               type="button"
               onClick={onGoToLayout}
               className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 transition-colors hover:bg-zinc-50 whitespace-nowrap"
             >
-              {doc.layout.isLocked ? 'Dettagli Blocco' : 'Impagina & Blocca'}
+              {doc.layout.isLocked ? 'Modifica Testi / Blocco' : 'Modifica Layout & Testi'}
             </button>
           )}
         </div>
@@ -338,7 +353,7 @@ export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
                   >
                     {doc.brand.heroSubtitle}
                   </p>
-                  <div>
+                  <div className="flex flex-wrap items-center gap-3">
                     <a
                       href="#preview-catalogo"
                       className="inline-block px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
@@ -350,6 +365,20 @@ export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
                     >
                       Esplora il Catalogo
                     </a>
+                    {onEditBrand && (
+                      <button
+                        type="button"
+                        onClick={onEditBrand}
+                        className="border px-4 py-2.5 text-xs font-medium transition-opacity hover:opacity-80"
+                        style={{
+                          borderColor: preset.colors.border,
+                          borderRadius: preset.radiusButton,
+                          color: preset.colors.ink,
+                        }}
+                      >
+                        Modifica Testi e Foto
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div
@@ -781,10 +810,26 @@ export const ShowcasePreview: React.FC<ShowcasePreviewProps> = ({
         >
           <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-4">
             <span>{doc.brand.footerNote || doc.brand.brandName}</span>
-            <span>
-              {doc.brand.contactEmail}
-              {doc.brand.whatsappNumber ? ` · ${doc.brand.whatsappNumber}` : ''}
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                {doc.brand.contactEmail}
+                {doc.brand.whatsappNumber ? ` · ${doc.brand.whatsappNumber}` : ''}
+              </span>
+              {onEditBrand && (
+                <button
+                  type="button"
+                  onClick={onEditBrand}
+                  className="border px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80"
+                  style={{
+                    borderColor: preset.colors.border,
+                    borderRadius: preset.radiusButton,
+                    color: preset.colors.ink,
+                  }}
+                >
+                  Modifica Firma e Contatti
+                </button>
+              )}
+            </div>
           </div>
         </footer>
       </div>
