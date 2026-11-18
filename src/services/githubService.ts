@@ -484,14 +484,71 @@ export async function publishShowcaseToGitHub(
   }
   const newCommit = (await newCommitRes.json()) as { sha: string };
 
-  const refUrl = `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(effectiveBranch)}`;
-  const patchRefRes = await fetch(refUrl, {
+  const updateRefUrl = `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(effectiveBranch)}`;
+  const patchRefRes = await fetch(updateRefUrl, {
     method: 'PATCH',
     headers: ghHeaders(token),
     body: JSON.stringify({ sha: newCommit.sha, force: false }),
   });
+
   if (!patchRefRes.ok) {
-    throw new Error(`Errore aggiornamento branch "${effectiveBranch}" (${patchRefRes.status}).`);
+    const errDetail = await patchRefRes.text().catch(() => '');
+    // Fallback to Contents API per-file commit if PATCH ref fails
+    if (patchRefRes.status === 404 || patchRefRes.status === 422) {
+      const filesToPut: Array<{ path: string; base64: string }> = [
+        { path: cleanDataPath, base64: encodeUtf8ToBase64(catalogJson) },
+        { path: cleanHtmlPath, base64: encodeUtf8ToBase64(standaloneHtml) },
+        ...imageFilesToUpload,
+      ];
+
+      let lastCommitSha = newCommit.sha;
+      for (const file of filesToPut) {
+        const fileApiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}`;
+        const existingRes = await fetch(
+          `${fileApiUrl}?ref=${encodeURIComponent(effectiveBranch)}`,
+          { headers: ghHeaders(token) }
+        );
+        const existingSha = existingRes.ok
+          ? ((await existingRes.json()) as { sha?: string }).sha
+          : undefined;
+
+        const putRes = await fetch(fileApiUrl, {
+          method: 'PUT',
+          headers: ghHeaders(token),
+          body: JSON.stringify({
+            message:
+              commitMessage?.trim() ||
+              `Aggiorna ${file.path} (${doc.products.length} articoli)`,
+            content: file.base64,
+            branch: effectiveBranch,
+            ...(existingSha ? { sha: existingSha } : {}),
+          }),
+        });
+
+        if (!putRes.ok) {
+          const putErr = await putRes.text().catch(() => '');
+          throw new Error(
+            `Errore aggiornamento branch "${effectiveBranch}" (${patchRefRes.status}) e fallback file "${file.path}" (${putRes.status}): ${putErr || errDetail}`
+          );
+        }
+        const putData = (await putRes.json()) as { commit?: { sha?: string } };
+        if (putData.commit?.sha) {
+          lastCommitSha = putData.commit.sha;
+        }
+      }
+
+      const pagesInfo = await ensureGitHubPagesEnabled(owner, repo, effectiveBranch, token);
+      return {
+        commitSha: lastCommitSha,
+        commitUrl: `https://github.com/${owner}/${repo}/commit/${lastCommitSha}`,
+        pagesUrl: pagesInfo.pagesUrl,
+        pagesStatus: pagesInfo.pagesStatus,
+      };
+    }
+
+    throw new Error(
+      `Errore aggiornamento branch "${effectiveBranch}" (${patchRefRes.status})${errDetail ? `: ${errDetail}` : '.'}`
+    );
   }
 
   const pagesInfo = await ensureGitHubPagesEnabled(owner, repo, effectiveBranch, token);
