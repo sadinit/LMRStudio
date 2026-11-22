@@ -395,7 +395,7 @@ export async function publishShowcaseToGitHub(
   };
 
   const catalogJson = JSON.stringify(repoCatalogDoc, null, 2);
-  const standaloneHtml = generateStandaloneHtml(repoCatalogDoc);
+  const standaloneHtml = generateStandaloneHtml(repoCatalogDoc, undefined, `./${cleanDataPath}`);
 
   // Ensure branch exists (and bootstrap empty repository automatically if needed)
   const { headSha: parentCommitSha, effectiveBranch } = await ensureBranchExistsOrBootstrap(
@@ -439,7 +439,7 @@ export async function publishShowcaseToGitHub(
     path: string;
     mode: string;
     type: string;
-    sha: string;
+    sha: string | null;
   }> = [];
 
   treeEntries.push({
@@ -456,13 +456,55 @@ export async function publishShowcaseToGitHub(
     sha: await createBlob(encodeUtf8ToBase64(catalogJson)),
   });
 
+  const activeRepoImages = new Set<string>();
+  if (repoCatalogDoc.brand.heroImageUrl?.startsWith('./images/')) {
+    activeRepoImages.add(repoCatalogDoc.brand.heroImageUrl.slice(2));
+  }
+  for (const p of repoCatalogDoc.products) {
+    if (p.imageUrl?.startsWith('./images/')) {
+      activeRepoImages.add(p.imageUrl.slice(2));
+    }
+  }
+
   for (const img of imageFilesToUpload) {
+    activeRepoImages.add(img.path);
     treeEntries.push({
       path: img.path,
       mode: '100644',
       type: 'blob',
       sha: await createBlob(img.base64),
     });
+  }
+
+  // Detect obsolete product images in images/ when items are deleted
+  const obsoleteImagePaths: string[] = [];
+  try {
+    const existingTreeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${baseTreeSha}?recursive=1`,
+      { headers: ghHeaders(token) }
+    );
+    if (existingTreeRes.ok) {
+      const existingTreeData = (await existingTreeRes.json()) as {
+        tree?: Array<{ path: string; type: string }>;
+      };
+      for (const item of existingTreeData.tree || []) {
+        if (
+          item.type === 'blob' &&
+          item.path.startsWith('images/prod-') &&
+          !activeRepoImages.has(item.path)
+        ) {
+          obsoleteImagePaths.push(item.path);
+          treeEntries.push({
+            path: item.path,
+            mode: '100644',
+            type: 'blob',
+            sha: null,
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-fatal if tree listing fails
   }
 
   const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
@@ -548,6 +590,41 @@ export async function publishShowcaseToGitHub(
         const putData = (await putRes.json()) as { commit?: { sha?: string } };
         if (putData.commit?.sha) {
           lastCommitSha = putData.commit.sha;
+        }
+      }
+
+      // Also remove obsolete product images in Contents API fallback
+      for (const oldPath of obsoleteImagePaths) {
+        try {
+          const cleanOldPath = normalizeRepoPath(oldPath, '');
+          if (!cleanOldPath) continue;
+          const delApiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanOldPath}`;
+          const existingRes = await fetch(
+            `${delApiUrl}?ref=${encodeURIComponent(effectiveBranch)}`,
+            { headers: ghHeaders(token) }
+          );
+          if (existingRes.ok) {
+            const existingData = (await existingRes.json()) as { sha?: string };
+            if (existingData.sha) {
+              const delRes = await fetch(delApiUrl, {
+                method: 'DELETE',
+                headers: ghHeaders(token),
+                body: JSON.stringify({
+                  message: `Rimuovi immagine prodotto eliminato (${cleanOldPath})`,
+                  sha: existingData.sha,
+                  branch: effectiveBranch,
+                }),
+              });
+              if (delRes.ok) {
+                const delData = (await delRes.json()) as { commit?: { sha?: string } };
+                if (delData.commit?.sha) {
+                  lastCommitSha = delData.commit.sha;
+                }
+              }
+            }
+          }
+        } catch {
+          // Ignore non-fatal cleanup errors
         }
       }
 

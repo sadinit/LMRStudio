@@ -12,7 +12,8 @@ function escapeHtml(value: string): string {
 
 export function generateStandaloneHtml(
   doc: ShowcaseDocument,
-  imagePathMap?: Record<string, string>
+  imagePathMap?: Record<string, string>,
+  catalogPath = './data/catalog.json'
 ): string {
   const preset = THEME_PRESETS[doc.layout.presetId];
   const mappedDoc: ShowcaseDocument = {
@@ -56,6 +57,9 @@ export function generateStandaloneHtml(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>${escapeHtml(mappedDoc.brand.brandName)} — Vetrina Prodotti</title>
   <meta name="description" content="${escapeHtml(mappedDoc.brand.heroSubtitle)}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -409,9 +413,8 @@ export function generateStandaloneHtml(
       <nav class="nav-links">
         <a href="#catalogo">Catalogo</a>
         <a href="#condizioni">Forniture</a>
-        <a href="#contatti">Contatti</a>
       </nav>
-      <button class="btn-primary" id="open-quote-btn" type="button">Richiesta Ordine (<span class="tabular" id="quote-count">0</span>)</button>
+      <a href="#contatti" class="btn-primary" style="text-decoration:none;">Contatti</a>
     </div>
   </header>
 
@@ -439,12 +442,11 @@ export function generateStandaloneHtml(
   </main>
 
   <footer class="container" id="contatti">
-    <span>${escapeHtml(mappedDoc.brand.footerNote || mappedDoc.brand.brandName)}</span>
-    <span>${escapeHtml(mappedDoc.brand.contactEmail)}${mappedDoc.brand.whatsappNumber ? ' · ' + escapeHtml(mappedDoc.brand.whatsappNumber) : ''}</span>
+    <span id="footer-note">${escapeHtml(mappedDoc.brand.footerNote || mappedDoc.brand.brandName)}</span>
+    <span id="footer-contact">${escapeHtml(mappedDoc.brand.contactEmail)}${mappedDoc.brand.whatsappNumber ? ' · ' + escapeHtml(mappedDoc.brand.whatsappNumber) : ''}</span>
   </footer>
 
   <dialog class="modal" id="product-modal"></dialog>
-  <dialog class="modal" id="quote-modal"></dialog>
 
   <script id="embedded-catalog" type="application/json">${serializedDoc}</script>
   <script>
@@ -454,7 +456,6 @@ export function generateStandaloneHtml(
       let activeCategory = 'Tutte';
       let searchQuery = '';
       let currentPage = 1;
-      let quoteItems = [];
 
       const fmt = (n, curr) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: curr || 'EUR' }).format(n);
       const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -616,11 +617,6 @@ export function generateStandaloneHtml(
         }
       }
 
-      function updateQuoteCount() {
-        const totalQty = quoteItems.reduce((acc, item) => acc + item.quantity, 0);
-        document.getElementById('quote-count').textContent = String(totalQty);
-      }
-
       function openProductModal(productId) {
         const p = (state.products || []).find((x) => x.id === productId);
         if (!p) return;
@@ -645,7 +641,6 @@ export function generateStandaloneHtml(
             + '<div style="font-size:0.75rem;color:var(--ink-muted);">Prezzo unitario: <span class="tabular">' + fmt(res.unitPrice, p.currency) + '</span></div>'
             + '<div class="tabular" style="font-size:1.15rem;font-weight:700;">Totale: ' + fmt(res.unitPrice * qty, p.currency) + '</div>'
             + '</div></div>'
-            + '<button type="button" class="btn-primary" id="add-to-quote">Aggiungi alla Richiesta Ordine</button>'
             + '</div></div>';
 
           document.getElementById('close-prod-modal').addEventListener('click', () => modal.close());
@@ -654,52 +649,43 @@ export function generateStandaloneHtml(
             qty = Math.max(1, parseInt(e.target.value || '1', 10));
             renderModal();
           });
-          document.getElementById('add-to-quote').addEventListener('click', () => {
-            const existing = quoteItems.find((i) => i.productId === p.id);
-            if (existing) existing.quantity += qty;
-            else quoteItems.push({ productId: p.id, quantity: qty });
-            updateQuoteCount();
-            modal.close();
-          });
         };
         renderModal();
         modal.showModal();
       }
 
-      function openQuoteModal() {
-        const modal = document.getElementById('quote-modal');
-        const rows = quoteItems.map((item) => {
-          const p = (state.products || []).find((x) => x.id === item.productId);
-          if (!p) return null;
-          const res = resolvePrice(p, item.quantity);
-          return { p, qty: item.quantity, unit: res.unitPrice, total: res.unitPrice * item.quantity };
-        }).filter(Boolean);
-        const grand = rows.reduce((s, r) => s + r.total, 0);
-        const summaryText = rows.map((r) => r.p.name + ' (' + r.p.sku + ') x ' + r.qty + ' ' + r.p.unitLabel + ' = ' + fmt(r.total, r.p.currency)).join('%0A');
-        const mailto = 'mailto:' + encodeURIComponent(state.brand.contactEmail || '') + '?subject=' + encodeURIComponent('Richiesta ordine — ' + state.brand.brandName) + '&body=' + summaryText;
-        modal.innerHTML = '<div class="modal-content">'
-          + '<div style="display:flex;justify-content:space-between;align-items:center;">'
-          + '<h2 style="font-family:var(--font-display);margin:0;">Riepilogo Richiesta Ordine</h2>'
-          + '<button type="button" class="btn-outline" id="close-quote-modal">Chiudi</button></div>'
-          + (rows.length
-            ? '<table class="tier-table"><tbody>' + rows.map((r) => '<tr><td><strong>' + esc(r.p.name) + '</strong><br><span style="color:var(--ink-muted);">' + r.qty + ' ' + esc(r.p.unitLabel) + ' × ' + fmt(r.unit, r.p.currency) + '</span></td><td class="price-cell tabular">' + fmt(r.total, r.p.currency) + '</td></tr>').join('') + '</tbody></table>'
-              + '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:0.75rem;border-top:1px solid var(--border);">'
-              + '<strong>Totale stimato</strong><strong class="tabular" style="font-size:1.25rem;">' + fmt(grand, 'EUR') + '</strong></div>'
-              + '<div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:0.5rem;">'
-              + '<a href="' + mailto + '" class="btn-primary" style="text-decoration:none;">Invia Richiesta via Email</a>'
-              + '<button type="button" class="btn-outline" id="clear-quote">Svuota Lista</button></div>'
-            : '<p style="color:var(--ink-muted);">La lista è vuota. Apri un prodotto per selezionare la quantità desiderata.</p>')
-          + '</div>';
-        document.getElementById('close-quote-modal').addEventListener('click', () => modal.close());
-        const clr = document.getElementById('clear-quote');
-        if (clr) clr.addEventListener('click', () => { quoteItems = []; updateQuoteCount(); modal.close(); });
-        modal.showModal();
-      }
-
-      document.getElementById('open-quote-btn').addEventListener('click', openQuoteModal);
       renderHero();
       renderToolbar();
       renderGrid();
+
+      if (window.location && window.location.protocol && window.location.protocol.indexOf('http') === 0) {
+        fetch(${JSON.stringify(catalogPath)} + '?v=' + Date.now(), { cache: 'no-store' })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((remote) => {
+            if (!remote || !Array.isArray(remote.products) || !remote.brand) return;
+            const localTime = Date.parse(state.updatedAt || '') || 0;
+            const remoteTime = Date.parse(remote.updatedAt || '') || 0;
+            if (remoteTime > localTime) {
+              state = remote;
+              const brandEl = document.getElementById('brand-title');
+              if (brandEl) brandEl.textContent = remote.brand.brandName || '';
+              const craftTitle = document.getElementById('craft-title');
+              if (craftTitle) craftTitle.textContent = remote.brand.craftNoteTitle || '';
+              const craftBody = document.getElementById('craft-body');
+              if (craftBody) craftBody.textContent = remote.brand.craftNoteBody || '';
+              const footerNoteEl = document.getElementById('footer-note');
+              if (footerNoteEl) footerNoteEl.textContent = remote.brand.footerNote || remote.brand.brandName || '';
+              const footerContactEl = document.getElementById('footer-contact');
+              if (footerContactEl) {
+                footerContactEl.textContent = (remote.brand.contactEmail || '') + (remote.brand.whatsappNumber ? ' · ' + remote.brand.whatsappNumber : '');
+              }
+              renderHero();
+              renderToolbar();
+              renderGrid();
+            }
+          })
+          .catch(() => {});
+      }
     })();
   </script>
 </body>
