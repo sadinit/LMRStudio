@@ -21,7 +21,11 @@ function decodeBase64ToUtf8(base64: string): string {
 }
 
 export function parseGitHubRepoString(input: string): { owner: string; repo: string } | null {
-  const trimmed = input.trim().replace(/\.git$/i, '').replace(/\/+$/, '');
+  const trimmed = input
+    .trim()
+    .split(/[?#]/)[0]
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '');
   if (!trimmed) return null;
 
   const urlMatch = trimmed.match(/github\.com\/([^/]+)\/([^/]+)/i);
@@ -39,6 +43,14 @@ export function parseGitHubRepoString(input: string): { owner: string; repo: str
     return { owner: slashMatch[1], repo: slashMatch[2] };
   }
   return null;
+}
+
+function normalizeRepoPath(rawPath: string, fallback: string): string {
+  const cleaned = rawPath
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/{2,}/g, '/');
+  return cleaned || fallback;
 }
 
 function ghHeaders(token?: string): Record<string, string> {
@@ -129,7 +141,7 @@ export async function loadCatalogFromGitHub(
     throw new Error('Configura prima owner e repository GitHub.');
   }
 
-  const cleanPath = dataPath.replace(/^\/+/, '');
+  const cleanPath = normalizeRepoPath(dataPath, 'data/catalog.json');
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${encodeURIComponent(branch || 'main')}`;
   const res = await fetch(url, { headers: ghHeaders(token) });
 
@@ -230,7 +242,8 @@ async function ensureBranchExistsOrBootstrap(
 
   if (branches.length === 0) {
     // Empty repository: bootstrap initial commit via Contents API
-    const putUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${initialPath}`;
+    const cleanInitialPath = normalizeRepoPath(initialPath, 'data/catalog.json');
+    const putUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanInitialPath}`;
     const putRes = await fetch(putUrl, {
       method: 'PUT',
       headers: ghHeaders(token),
@@ -320,8 +333,8 @@ export async function publishShowcaseToGitHub(
   }
 
   const cleanBranch = branch.trim() || 'main';
-  const cleanHtmlPath = htmlPath.trim().replace(/^\/+/, '') || 'index.html';
-  const cleanDataPath = dataPath.trim().replace(/^\/+/, '') || 'data/catalog.json';
+  const cleanHtmlPath = normalizeRepoPath(htmlPath, 'index.html');
+  const cleanDataPath = normalizeRepoPath(dataPath, 'data/catalog.json');
 
   // Verify repository existence and write permissions first
   const repoCheckRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
@@ -503,7 +516,8 @@ export async function publishShowcaseToGitHub(
 
       let lastCommitSha = newCommit.sha;
       for (const file of filesToPut) {
-        const fileApiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}`;
+        const cleanFilePath = normalizeRepoPath(file.path, 'index.html');
+        const fileApiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanFilePath}`;
         const existingRes = await fetch(
           `${fileApiUrl}?ref=${encodeURIComponent(effectiveBranch)}`,
           { headers: ghHeaders(token) }
