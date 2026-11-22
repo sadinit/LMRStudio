@@ -335,19 +335,117 @@ export function generateStandaloneHtml(
       gap: 0.5rem;
       padding: 2.5rem 0 1rem;
     }
-    .craft-section {
+    .order-section {
       margin-top: 3rem;
       padding: 2.5rem 0;
       border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
-      display: grid;
-      grid-template-columns: 1fr 1.5fr;
-      gap: 2rem;
     }
-    .craft-section h2 {
+    .order-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .order-head h2 {
       font-family: var(--font-display);
-      font-size: 1.65rem;
+      font-size: 1.75rem;
+      margin: 0 0 0.25rem;
+    }
+    .order-sub {
       margin: 0;
+      font-size: 0.88rem;
+      color: var(--ink-muted);
+    }
+    .order-badge {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      color: var(--ink);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .order-empty {
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-card);
+      padding: 2rem 1.5rem;
+      text-align: center;
+      color: var(--ink-muted);
+      font-size: 0.9rem;
+    }
+    .order-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+    }
+    .order-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .order-row {
+      display: grid;
+      grid-template-columns: 56px 1.6fr auto auto auto;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.9rem 1.15rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .order-row:last-child { border-bottom: none; }
+    .order-row-actions { display: contents; }
+    .order-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-btn);
+      border: 1px solid var(--border);
+      background: var(--surface-muted);
+      overflow: hidden;
+    }
+    .order-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .order-qty-ctrl {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-btn);
+      background: var(--surface-muted);
+      overflow: hidden;
+    }
+    .order-qty-ctrl button {
+      border: none;
+      background: transparent;
+      color: var(--ink);
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .order-qty-ctrl button:hover { background: var(--border); }
+    .order-qty-ctrl input {
+      width: 50px;
+      height: 30px;
+      border: none;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--ink);
+      text-align: center;
+      font-size: 0.85rem;
+    }
+    .order-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.15rem;
+      background: var(--surface-muted);
+      border-top: 1px solid var(--border);
     }
     footer {
       padding: 2rem 0 3rem;
@@ -398,11 +496,25 @@ export function generateStandaloneHtml(
 
     @media (max-width: 980px) {
       .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .hero-split, .craft-section, .modal-grid { grid-template-columns: 1fr; }
+      .hero-split, .modal-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .order-row {
+        grid-template-columns: 48px 1fr;
+        gap: 0.65rem 0.85rem;
+      }
+      .order-row .order-row-actions {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
     }
     @media (max-width: 640px) {
       .product-grid { grid-template-columns: 1fr; }
-      .nav-links { display: none; }
+      .nav-catalog { display: none; }
+      .topbar-inner { gap: 0.75rem; }
     }
   </style>
 </head>
@@ -411,8 +523,8 @@ export function generateStandaloneHtml(
     <div class="container topbar-inner">
       <a href="#top" class="brand-link" id="brand-title">${escapeHtml(mappedDoc.brand.brandName)}</a>
       <nav class="nav-links">
-        <a href="#catalogo">Catalogo</a>
-        <a href="#condizioni">Forniture</a>
+        <a href="#catalogo" class="nav-catalog">Catalogo</a>
+        <a href="#da-ordinare">Da Ordinare <span class="order-badge tabular" id="nav-order-count">0</span></a>
       </nav>
       <a href="#contatti" class="btn-primary" style="text-decoration:none;">Contatti</a>
     </div>
@@ -429,15 +541,8 @@ export function generateStandaloneHtml(
       <div class="pagination" id="pagination-root"></div>
     </section>
 
-    <section class="container" id="condizioni">
-      <div class="craft-section">
-        <div>
-          <h2 id="craft-title">${escapeHtml(mappedDoc.brand.craftNoteTitle)}</h2>
-        </div>
-        <div>
-          <p id="craft-body" style="margin:0;color:var(--ink-muted);">${escapeHtml(mappedDoc.brand.craftNoteBody)}</p>
-        </div>
-      </div>
+    <section class="container" id="da-ordinare">
+      <div class="order-section" id="order-root"></div>
     </section>
   </main>
 
@@ -456,9 +561,80 @@ export function generateStandaloneHtml(
       let activeCategory = 'Tutte';
       let searchQuery = '';
       let currentPage = 1;
+      const STORAGE_KEY = 'vetrinakit_da_ordinare:' + (window.location ? window.location.pathname : '/');
+      let orderList = loadOrderList();
+      let copiedFeedback = false;
 
       const fmt = (n, curr) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: curr || 'EUR' }).format(n);
       const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+      function loadOrderList() {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          const parsed = raw ? JSON.parse(raw) : [];
+          if (!Array.isArray(parsed)) return [];
+          return parsed
+            .filter((item) => item && typeof item.productId === 'string' && Number(item.qty) > 0)
+            .map((item) => ({ productId: item.productId, qty: Math.max(1, Math.floor(Number(item.qty))) }));
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveOrderList() {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(orderList));
+        } catch (e) {
+          // Ignore storage quota / private mode restrictions
+        }
+      }
+
+      function pruneOrderList() {
+        const validIds = new Set((state.products || []).map((p) => p.id));
+        const filtered = orderList.filter((item) => validIds.has(item.productId));
+        if (filtered.length !== orderList.length) {
+          orderList = filtered;
+          saveOrderList();
+        }
+      }
+
+      function getOrderQty(productId) {
+        const found = orderList.find((item) => item.productId === productId);
+        return found ? found.qty : 0;
+      }
+
+      function addToOrderList(productId, qtyToAdd) {
+        const add = Math.max(1, Math.floor(qtyToAdd || 1));
+        const existing = orderList.find((item) => item.productId === productId);
+        if (existing) {
+          existing.qty += add;
+        } else {
+          orderList.push({ productId, qty: add });
+        }
+        saveOrderList();
+        renderOrderList();
+        renderGrid();
+      }
+
+      function setOrderItemQty(productId, nextQty) {
+        const clean = Math.floor(Number(nextQty) || 0);
+        if (clean <= 0) {
+          orderList = orderList.filter((item) => item.productId !== productId);
+        } else {
+          const existing = orderList.find((item) => item.productId === productId);
+          if (existing) existing.qty = clean;
+        }
+        saveOrderList();
+        renderOrderList();
+        renderGrid();
+      }
+
+      function clearOrderList() {
+        orderList = [];
+        saveOrderList();
+        renderOrderList();
+        renderGrid();
+      }
 
       function resolvePrice(product, qty) {
         const q = Math.max(1, Math.floor(qty || 1));
@@ -576,6 +752,7 @@ export function generateStandaloneHtml(
             if (!state.layout || state.layout.showAvailability) {
               metaParts.push(p.availability === 'available' ? 'Disponibile' : p.availability === 'made-to-order' ? 'Su ordinazione' : 'Esaurito');
             }
+            const inListQty = getOrderQty(p.id);
             return '<article class="card">'
               + '<div class="card-img-wrap">' + (p.imageUrl ? '<img src="' + esc(p.imageUrl) + '" alt="' + esc(p.name) + '" loading="lazy" />' : '') + '</div>'
               + '<div class="card-body">'
@@ -590,11 +767,18 @@ export function generateStandaloneHtml(
               + tierBlock
               + '<div class="card-actions">'
               + '<button type="button" class="btn-outline" data-detail="' + esc(p.id) + '" style="flex:1;">Dettagli & Quantità</button>'
+              + '<button type="button" class="btn-primary" data-add-order="' + esc(p.id) + '">' + (inListQty > 0 ? '+1 (' + inListQty + ')' : '+ Da Ordinare') + '</button>'
               + '</div></div></div></article>';
           }).join('');
 
           grid.querySelectorAll('[data-detail]').forEach((btn) => {
             btn.addEventListener('click', () => openProductModal(btn.getAttribute('data-detail')));
+          });
+          grid.querySelectorAll('[data-add-order]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const id = btn.getAttribute('data-add-order');
+              addToOrderList(id, 1);
+            });
           });
         }
 
@@ -613,6 +797,128 @@ export function generateStandaloneHtml(
               renderGrid();
               document.getElementById('catalogo').scrollIntoView({ behavior: 'smooth' });
             });
+          });
+        }
+      }
+
+      function renderOrderList() {
+        pruneOrderList();
+        const navCount = document.getElementById('nav-order-count');
+        const totalUnits = orderList.reduce((acc, item) => acc + item.qty, 0);
+        if (navCount) navCount.textContent = String(totalUnits);
+
+        const root = document.getElementById('order-root');
+        if (!root) return;
+
+        const productsById = {};
+        (state.products || []).forEach((p) => { productsById[p.id] = p; });
+        const rows = orderList
+          .map((item) => ({ item, product: productsById[item.productId] }))
+          .filter((x) => Boolean(x.product));
+
+        let grandTotal = 0;
+        let currency = 'EUR';
+        rows.forEach((r) => {
+          currency = r.product.currency || currency;
+          const res = resolvePrice(r.product, r.item.qty);
+          grandTotal += res.unitPrice * r.item.qty;
+        });
+
+        const headerHtml = '<div class="order-head">'
+          + '<div><h2>Da Ordinare</h2>'
+          + '<p class="order-sub">Promemoria personale salvato solo su questo browser per i tuoi prossimi ordini.</p></div>'
+          + (rows.length ? '<div class="tabular" style="font-size:0.9rem;color:var(--ink-muted);">' + rows.length + ' articoli · ' + totalUnits + ' pezzi</div>' : '')
+          + '</div>';
+
+        if (!rows.length) {
+          root.innerHTML = headerHtml
+            + '<div class="order-empty">Il tuo promemoria <strong>Da Ordinare</strong> è vuoto. Usa <strong>+ Da Ordinare</strong> sulle schede prodotto o scegli la quantità da <strong>Dettagli &amp; Quantità</strong>.</div>';
+          return;
+        }
+
+        const listHtml = rows.map((r) => {
+          const p = r.product;
+          const res = resolvePrice(p, r.item.qty);
+          const lineTotal = res.unitPrice * r.item.qty;
+          const tierInfo = res.active && res.active.label ? ' · ' + esc(res.active.label) : '';
+          return '<div class="order-row">'
+            + '<div class="order-thumb">' + (p.imageUrl ? '<img src="' + esc(p.imageUrl) + '" alt="' + esc(p.name) + '" />' : '') + '</div>'
+            + '<div style="min-width:0;">'
+            + '<div style="font-weight:600;font-size:0.98rem;">' + esc(p.name) + '</div>'
+            + '<div style="font-size:0.78rem;color:var(--ink-muted);"><span class="tabular">' + esc(p.sku) + '</span> · <span class="tabular">' + fmt(res.unitPrice, p.currency) + '</span> / ' + esc(p.unitLabel) + tierInfo + '</div>'
+            + '</div>'
+            + '<div class="order-row-actions">'
+            + '<div class="order-qty-ctrl">'
+            + '<button type="button" data-order-dec="' + esc(p.id) + '" aria-label="Diminuisci quantità">-</button>'
+            + '<input type="number" min="1" value="' + r.item.qty + '" data-order-input="' + esc(p.id) + '" aria-label="Quantità ' + esc(p.name) + '" />'
+            + '<button type="button" data-order-inc="' + esc(p.id) + '" aria-label="Aumenta quantità">+</button>'
+            + '</div>'
+            + '<div class="tabular" style="font-weight:700;font-size:1rem;min-width:92px;text-align:right;">' + fmt(lineTotal, p.currency) + '</div>'
+            + '<button type="button" class="btn-outline" data-order-remove="' + esc(p.id) + '" style="padding:0.35rem 0.65rem;font-size:0.78rem;">Rimuovi</button>'
+            + '</div>'
+            + '</div>';
+        }).join('');
+
+        root.innerHTML = headerHtml
+          + '<div class="order-box">'
+          + '<div class="order-list">' + listHtml + '</div>'
+          + '<div class="order-footer">'
+          + '<div style="display:flex;flex-wrap:wrap;gap:0.6rem;">'
+          + '<button type="button" class="btn-primary" id="copy-order-btn">' + (copiedFeedback ? 'Lista Copiata!' : 'Copia Lista Promemoria') + '</button>'
+          + '<button type="button" class="btn-outline" id="clear-order-btn">Svuota Lista</button>'
+          + '</div>'
+          + '<div style="text-align:right;">'
+          + '<div style="font-size:0.75rem;color:var(--ink-muted);">Totale indicativo promemoria</div>'
+          + '<div class="tabular" style="font-size:1.25rem;font-weight:700;">' + fmt(grandTotal, currency) + '</div>'
+          + '</div>'
+          + '</div></div>';
+
+        root.querySelectorAll('[data-order-dec]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-order-dec');
+            setOrderItemQty(id, getOrderQty(id) - 1);
+          });
+        });
+        root.querySelectorAll('[data-order-inc]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-order-inc');
+            setOrderItemQty(id, getOrderQty(id) + 1);
+          });
+        });
+        root.querySelectorAll('[data-order-input]').forEach((inp) => {
+          inp.addEventListener('change', (e) => {
+            const id = inp.getAttribute('data-order-input');
+            const val = parseInt(e.target.value || '1', 10);
+            setOrderItemQty(id, Math.max(1, val));
+          });
+        });
+        root.querySelectorAll('[data-order-remove]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            setOrderItemQty(btn.getAttribute('data-order-remove'), 0);
+          });
+        });
+
+        const clearBtn = document.getElementById('clear-order-btn');
+        if (clearBtn) clearBtn.addEventListener('click', clearOrderList);
+
+        const copyBtn = document.getElementById('copy-order-btn');
+        if (copyBtn) {
+          copyBtn.addEventListener('click', () => {
+            const lines = ['DA ORDINARE — ' + ((state.brand && state.brand.brandName) || ''), ''];
+            rows.forEach((r) => {
+              const p = r.product;
+              const res = resolvePrice(p, r.item.qty);
+              lines.push('- ' + p.name + ' [' + p.sku + ']: ' + r.item.qty + ' ' + p.unitLabel + ' x ' + fmt(res.unitPrice, p.currency) + ' = ' + fmt(res.unitPrice * r.item.qty, p.currency));
+            });
+            lines.push('', 'Totale indicativo: ' + fmt(grandTotal, currency));
+            const text = lines.join('\\n');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(() => {
+                copiedFeedback = true;
+                renderOrderList();
+                setTimeout(() => { copiedFeedback = false; renderOrderList(); }, 2000);
+              }).catch(() => {});
+            }
           });
         }
       }
@@ -641,6 +947,7 @@ export function generateStandaloneHtml(
             + '<div style="font-size:0.75rem;color:var(--ink-muted);">Prezzo unitario: <span class="tabular">' + fmt(res.unitPrice, p.currency) + '</span></div>'
             + '<div class="tabular" style="font-size:1.15rem;font-weight:700;">Totale: ' + fmt(res.unitPrice * qty, p.currency) + '</div>'
             + '</div></div>'
+            + '<button type="button" class="btn-primary" id="add-to-order-modal" style="width:100%;">Aggiungi a Da Ordinare</button>'
             + '</div></div>';
 
           document.getElementById('close-prod-modal').addEventListener('click', () => modal.close());
@@ -648,6 +955,10 @@ export function generateStandaloneHtml(
           inp.addEventListener('change', (e) => {
             qty = Math.max(1, parseInt(e.target.value || '1', 10));
             renderModal();
+          });
+          document.getElementById('add-to-order-modal').addEventListener('click', () => {
+            addToOrderList(p.id, qty);
+            modal.close();
           });
         };
         renderModal();
@@ -657,6 +968,7 @@ export function generateStandaloneHtml(
       renderHero();
       renderToolbar();
       renderGrid();
+      renderOrderList();
 
       if (window.location && window.location.protocol && window.location.protocol.indexOf('http') === 0) {
         fetch(${JSON.stringify(catalogPath)} + '?v=' + Date.now(), { cache: 'no-store' })
@@ -669,10 +981,6 @@ export function generateStandaloneHtml(
               state = remote;
               const brandEl = document.getElementById('brand-title');
               if (brandEl) brandEl.textContent = remote.brand.brandName || '';
-              const craftTitle = document.getElementById('craft-title');
-              if (craftTitle) craftTitle.textContent = remote.brand.craftNoteTitle || '';
-              const craftBody = document.getElementById('craft-body');
-              if (craftBody) craftBody.textContent = remote.brand.craftNoteBody || '';
               const footerNoteEl = document.getElementById('footer-note');
               if (footerNoteEl) footerNoteEl.textContent = remote.brand.footerNote || remote.brand.brandName || '';
               const footerContactEl = document.getElementById('footer-contact');
@@ -682,6 +990,7 @@ export function generateStandaloneHtml(
               renderHero();
               renderToolbar();
               renderGrid();
+              renderOrderList();
             }
           })
           .catch(() => {});
